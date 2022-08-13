@@ -4,9 +4,12 @@ import(
     "fmt"
     "os"
     "log"
-    "io"
+    "time"
+    _ "io"
     "context"
-    "bytes"
+    _ "bytes"
+    _ "strings"
+    "bufio"
 
     "k8s.io/client-go/rest"
     "k8s.io/client-go/tools/clientcmd"
@@ -23,6 +26,23 @@ func buildFromKubeConfig() *rest.Config {
     return config
 }
 
+func tailPod(podName string, podNamespace string, clientset *kubernetes.Clientset){
+    // Get logs IO reader
+    logs, err := clientset.CoreV1().Pods(podNamespace).GetLogs(podName, &corev1.PodLogOptions{
+        Follow: true,
+    }).Stream(context.TODO())
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Tail logs via scanner object
+    sc := bufio.NewScanner(logs)
+
+    for sc.Scan() {
+        fmt.Printf("%v pod: %v\n", podName, sc.Text())
+    }
+}
+
 func main() {
     fmt.Println("Welcome to Morpheus")
 
@@ -34,24 +54,14 @@ func main() {
     }
 
     // TODO: iterate over pod list and get logs
-    _, err = clientset.CoreV1().Pods("default").List(context.TODO(), metav1.ListOptions{})
+    _, err = clientset.CoreV1().Pods("kube-system").List(context.TODO(), metav1.ListOptions{})
     if err != nil {
         log.Fatal(err)
     }
 
-    // Get logs IO reader
-    req := clientset.CoreV1().Pods("default").GetLogs("scraper", &corev1.PodLogOptions{})
-    logs, err := req.Stream(context.TODO()); if err != nil {
-        log.Fatal(err)
-    }
+    go tailPod("scraper", "default", clientset)
+    go tailPod("scraper-down", "default", clientset)
 
-    // Copy reader to buffer
-    buf := new(bytes.Buffer)
-    _, err = io.Copy(buf, logs); if err != nil {
-        log.Fatal(err)
-    }
-
-    logsAsString := buf.String()
-    fmt.Println(logsAsString)
+    time.Sleep(time.Minute)
 
 }
