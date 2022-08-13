@@ -10,6 +10,7 @@ import(
     _ "bytes"
     _ "strings"
     "bufio"
+    "sync"
 
     "k8s.io/client-go/rest"
     "k8s.io/client-go/tools/clientcmd"
@@ -17,6 +18,8 @@ import(
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     corev1 "k8s.io/api/core/v1"
 )
+
+var wg sync.WaitGroup
 
 func buildFromKubeConfig() *rest.Config {
     home := os.Getenv("HOME")
@@ -27,6 +30,7 @@ func buildFromKubeConfig() *rest.Config {
 }
 
 func tailPod(podName string, podNamespace string, clientset *kubernetes.Clientset){
+    defer wg.Done()
     // Get logs IO reader
     logs, err := clientset.CoreV1().Pods(podNamespace).GetLogs(podName, &corev1.PodLogOptions{
         Follow: true,
@@ -44,6 +48,8 @@ func tailPod(podName string, podNamespace string, clientset *kubernetes.Clientse
 }
 
 func main() {
+
+    wg.Add(2)
     fmt.Println("Welcome to Morpheus")
 
     config := buildFromKubeConfig()
@@ -62,6 +68,6 @@ func main() {
     go tailPod("scraper", "default", clientset)
     go tailPod("scraper-down", "default", clientset)
 
-    time.Sleep(time.Minute)
+    wg.Wait()
 
 }
