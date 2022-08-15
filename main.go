@@ -8,6 +8,8 @@ import(
     "bufio"
     "sync"
     "math/rand"
+    "flag"
+
     "github.com/gookit/color"
 
     "k8s.io/client-go/rest"
@@ -19,6 +21,7 @@ import(
 )
 
 var wg sync.WaitGroup
+var namespace string
 
 func buildFromKubeConfig() *rest.Config {
     home := os.Getenv("HOME")
@@ -28,8 +31,7 @@ func buildFromKubeConfig() *rest.Config {
     return config
 }
 
-func iteratePods(clientset *kubernetes.Clientset){
-    namespace := "default"
+func iteratePods(clientset *kubernetes.Clientset, namespace string){
 
     pods, err := clientset.CoreV1().Pods(namespace).Watch(context.TODO(), metav1.ListOptions{
             Watch : true,
@@ -97,8 +99,6 @@ func tailPod(podName string, podNamespace string, clientset *kubernetes.Clientse
 
 func main() {
 
-    fmt.Println("Welcome to Morpheus - begin by creating some pods in the namespace specified")
-
     config := buildFromKubeConfig()
 
     // Create client
@@ -106,6 +106,11 @@ func main() {
         log.Fatal(err)
     }
 
-    iteratePods(clientset)
+    flag.StringVar(&namespace, "namespace", "default", "namespace to run morpheus in")
+    flag.Parse()
+
+    fmt.Printf("Welcome to Morpheus - running in %v namespace\n", namespace)
+
+    iteratePods(clientset, namespace)
 
 }
