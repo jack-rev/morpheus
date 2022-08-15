@@ -8,11 +8,10 @@ import(
     "bufio"
     "sync"
     "math/rand"
-    // "time"
     "github.com/gookit/color"
 
     "k8s.io/client-go/rest"
-    watch "k8s.io/apimachinery/pkg/watch"
+    "k8s.io/apimachinery/pkg/watch"
     "k8s.io/client-go/tools/clientcmd"
     "k8s.io/client-go/kubernetes"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -50,8 +49,7 @@ func iteratePods(clientset *kubernetes.Clientset){
             case watch.Added:
                 fmt.Printf("%v has been detected by Morpheus - tailing will begin once pod status is Running\n", pod.ObjectMeta.Name)
             case watch.Modified:
-                fmt.Println("Modified: Running")
-                // Wait until pod is running, but not marked for DeletionTimestamp
+                // Wait until pod is running, but not marked for deletion
                 // TODO test against other use cases such as patches/updates, jobs, etc.
                 if pod.Status.Phase == corev1.PodRunning && pod.ObjectMeta.DeletionTimestamp == nil {
                     go tailPod(pod.ObjectMeta.Name, namespace, clientset)
@@ -64,6 +62,8 @@ func iteratePods(clientset *kubernetes.Clientset){
 }
 
 func tailPod(podName string, podNamespace string, clientset *kubernetes.Clientset){
+
+    // TODO add a timeout to deal with non-deletion events such as lost connection to cluster
 
     fmt.Printf("Tailing %v\n", podName)
 
@@ -80,18 +80,18 @@ func tailPod(podName string, podNamespace string, clientset *kubernetes.Clientse
         log.Fatal(err)
     }
 
-    // Generate random colour, omitting darker colours
+    // Generate random colour, omitting darker ones
     r := rand.Intn(175)+80
     g := rand.Intn(175)+80
     b := rand.Intn(175)+80
 
-    // Print logs as they are being streamed via scanner object, giving tail-like functionality
+    // Print logs in random colour as they are being streamed to scanner
     sc := bufio.NewScanner(logs)
     for sc.Scan() {
         color.Printf("<fg=%v,%v,%v>%v: %v</>\n", r, g, b, podName, sc.Text())
     }
 
-    // EOF in scanner has been reached as pod has been deleted or is no longer available - exit GoRoutine
+    // EOF in scanner has been reached - exit GoRoutine
     return
 }
 
