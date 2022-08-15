@@ -73,7 +73,7 @@ func tailPod(podName string, podNamespace string, clientset *kubernetes.Clientse
         log.Fatal(err)
     }
 
-    // Generate random colour, omitting darker ones
+    // Generate random colour RGB values, omitting darker ones
     r := rand.Intn(175)+80
     g := rand.Intn(175)+80
     b := rand.Intn(175)+80
