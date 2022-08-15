@@ -20,7 +20,6 @@ import(
 )
 
 var wg sync.WaitGroup
-var Reset  = "\033[0m"
 
 func buildFromKubeConfig() *rest.Config {
     home := os.Getenv("HOME")
@@ -40,22 +39,27 @@ func iteratePods(clientset *kubernetes.Clientset){
         log.Fatal(err)
     }
 
+    // wg.Done() is never called, so Morpheus can run indefinitely and listen for new pods
     wg.Add(1)
+
+    // ResultChan provides channel to which new pods are added
     eventChan := pods.ResultChan()
     for event := range eventChan {
         pod := event.Object.(*corev1.Pod)
         switch event.Type {
             case watch.Added:
-                fmt.Printf("Pod %v has been added - tailing to begin once pod status is Running\n", pod.ObjectMeta.Name)
+                fmt.Printf("%v has been added - tailing to begin once pod status is Running\n", pod.ObjectMeta.Name)
                 go tailPod(pod.ObjectMeta.Name, namespace, clientset)
             case watch.Deleted:
-                fmt.Printf("Pod %v has been deleted - stopping tailing\n", pod.ObjectMeta.Name)
+                fmt.Printf("%v has been deleted - ceasing tailing\n", pod.ObjectMeta.Name)
         }
     }
     wg.Wait()
 }
 
 func tailPod(podName string, podNamespace string, clientset *kubernetes.Clientset){
+
+    // Wait until pod is up and running
     for {
         // This works but feel like it could be better written... are chans an option here?
         pod, err := clientset.CoreV1().Pods(podNamespace).Get(context.TODO(), podName, metav1.GetOptions{})
@@ -68,11 +72,13 @@ func tailPod(podName string, podNamespace string, clientset *kubernetes.Clientse
         }
     }
 
-    fmt.Printf("Now tailing pod %v\n", podName)
+    fmt.Printf("Tailing pod %v\n", podName)
 
+    // Include logs from the past 5 seconds
+    //TODO parameterise this
     sinceSeconds := int64(5)
 
-    // Get logs IO reader
+    // Get logs as a Request object then convert to IO reader via Stream()
     logs, err := clientset.CoreV1().Pods(podNamespace).GetLogs(podName, &corev1.PodLogOptions{
         Follow: true,
         SinceSeconds: &sinceSeconds,
@@ -81,18 +87,18 @@ func tailPod(podName string, podNamespace string, clientset *kubernetes.Clientse
         log.Fatal(err)
     }
 
-    r := rand.Intn(155)+100
-    g := rand.Intn(155)+100
-    b := rand.Intn(155)+100
+    // Generate random colour, omitting darker colours
+    r := rand.Intn(175)+80
+    g := rand.Intn(175)+80
+    b := rand.Intn(175)+80
 
-    // Tail logs via scanner object
-    // Logs are not being received from the eventChan
-    // As a challenge, see if you can rewrite this using channels rather than a stream?
+    // Print logs as they are being streamed via scanner object, giving tail-like functionality
     sc := bufio.NewScanner(logs)
     for sc.Scan() {
         color.Printf("<fg=%v,%v,%v>%v: %v</>\n", r, g, b, podName, sc.Text())
     }
 
+    // EOF in scanner has been reached as pod has been deleted or is no longer available - exit GoRoutine
     return
 }
 
