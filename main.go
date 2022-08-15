@@ -8,7 +8,7 @@ import(
     "bufio"
     "sync"
     "math/rand"
-    "time"
+    // "time"
     "github.com/gookit/color"
 
     "k8s.io/client-go/rest"
@@ -48,10 +48,16 @@ func iteratePods(clientset *kubernetes.Clientset){
         pod := event.Object.(*corev1.Pod)
         switch event.Type {
             case watch.Added:
-                fmt.Printf("%v has been added - tailing to begin once pod status is Running\n", pod.ObjectMeta.Name)
-                go tailPod(pod.ObjectMeta.Name, namespace, clientset)
+                fmt.Printf("%v has been detected by Morpheus - tailing will begin once pod status is Running\n", pod.ObjectMeta.Name)
+            case watch.Modified:
+                fmt.Println("Modified: Running")
+                // Wait until pod is running, but not marked for DeletionTimestamp
+                // TODO test against other use cases such as patches/updates, jobs, etc.
+                if pod.Status.Phase == corev1.PodRunning && pod.ObjectMeta.DeletionTimestamp == nil {
+                    go tailPod(pod.ObjectMeta.Name, namespace, clientset)
+                }
             case watch.Deleted:
-                fmt.Printf("%v has been deleted - ceasing tailing\n", pod.ObjectMeta.Name)
+                fmt.Printf("%v has been deleted - no longer tailing\n", pod.ObjectMeta.Name)
         }
     }
     wg.Wait()
@@ -59,20 +65,7 @@ func iteratePods(clientset *kubernetes.Clientset){
 
 func tailPod(podName string, podNamespace string, clientset *kubernetes.Clientset){
 
-    // Wait until pod is up and running
-    for {
-        // This works but feel like it could be better written... are chans an option here?
-        pod, err := clientset.CoreV1().Pods(podNamespace).Get(context.TODO(), podName, metav1.GetOptions{})
-        if err != nil {
-            log.Fatal(err)
-        }
-        time.Sleep(time.Second)
-        if pod.Status.Phase == corev1.PodRunning {
-            break
-        }
-    }
-
-    fmt.Printf("Tailing pod %v\n", podName)
+    fmt.Printf("Tailing %v\n", podName)
 
     // Include logs from the past 5 seconds
     //TODO parameterise this
@@ -104,7 +97,7 @@ func tailPod(podName string, podNamespace string, clientset *kubernetes.Clientse
 
 func main() {
 
-    fmt.Println("Welcome to Morpheus")
+    fmt.Println("Welcome to Morpheus - begin by creating some pods in the namespace specified")
 
     config := buildFromKubeConfig()
 
