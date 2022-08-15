@@ -6,7 +6,6 @@ import(
     "log"
     "context"
     "bufio"
-    "sync"
     "math/rand"
     "flag"
 
@@ -20,7 +19,6 @@ import(
     corev1 "k8s.io/api/core/v1"
 )
 
-var wg sync.WaitGroup
 var namespace string
 
 func buildFromKubeConfig() *rest.Config {
@@ -32,16 +30,12 @@ func buildFromKubeConfig() *rest.Config {
 }
 
 func iteratePods(clientset *kubernetes.Clientset, namespace string){
-
     pods, err := clientset.CoreV1().Pods(namespace).Watch(context.TODO(), metav1.ListOptions{
             Watch : true,
         })
     if err != nil {
         log.Fatal(err)
     }
-
-    // wg.Done() is never called, so Morpheus can run indefinitely and listen for new pods
-    wg.Add(1)
 
     // ResultChan provides channel to which new pods are added
     eventChan := pods.ResultChan()
@@ -60,13 +54,10 @@ func iteratePods(clientset *kubernetes.Clientset, namespace string){
                 fmt.Printf("%v has been deleted - no longer tailing\n", pod.ObjectMeta.Name)
         }
     }
-    wg.Wait()
 }
 
 func tailPod(podName string, podNamespace string, clientset *kubernetes.Clientset){
-
     // TODO add a timeout to deal with non-deletion events such as lost connection to cluster
-
     fmt.Printf("Tailing %v\n", podName)
 
     // Include logs from the past 5 seconds
@@ -92,15 +83,12 @@ func tailPod(podName string, podNamespace string, clientset *kubernetes.Clientse
     for sc.Scan() {
         color.Printf("<fg=%v,%v,%v>%v: %v</>\n", r, g, b, podName, sc.Text())
     }
-
     // EOF in scanner has been reached - exit GoRoutine
     return
 }
 
 func main() {
-
     config := buildFromKubeConfig()
-
     // Create client
     clientset, err := kubernetes.NewForConfig(config); if err != nil {
         log.Fatal(err)
@@ -110,7 +98,5 @@ func main() {
     flag.Parse()
 
     fmt.Printf("Welcome to Morpheus - running in %v namespace\n", namespace)
-
     iteratePods(clientset, namespace)
-
 }
