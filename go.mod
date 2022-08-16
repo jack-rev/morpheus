@@ -1,4 +1,4 @@
-module github.com/jack-rev/morpheus/morpheus/v2
+module github.com/jack-rev/morpheus/v2
 
 go 1.19
 

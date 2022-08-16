@@ -20,6 +20,7 @@ import(
 )
 
 var namespace string
+var sinceSecondsAgo int
 
 func buildFromKubeConfig() *rest.Config {
     home := os.Getenv("HOME")
@@ -29,7 +30,7 @@ func buildFromKubeConfig() *rest.Config {
     return config
 }
 
-func iteratePods(clientset *kubernetes.Clientset, namespace string){
+func iteratePods(clientset *kubernetes.Clientset){
     pods, err := clientset.CoreV1().Pods(namespace).Watch(context.TODO(), metav1.ListOptions{
             Watch : true,
         })
@@ -44,11 +45,14 @@ func iteratePods(clientset *kubernetes.Clientset, namespace string){
         switch event.Type {
             case watch.Added:
                 fmt.Printf("%v has been detected by Morpheus - tailing will begin once pod status is Running\n", pod.ObjectMeta.Name)
+                if pod.Status.Phase == corev1.PodRunning && pod.ObjectMeta.DeletionTimestamp == nil {
+                    go tailPod(pod.ObjectMeta.Name, clientset)
+                }
             case watch.Modified:
                 // Wait until pod is running, but not marked for deletion
                 // TODO test against other use cases such as patches/updates, jobs, etc.
                 if pod.Status.Phase == corev1.PodRunning && pod.ObjectMeta.DeletionTimestamp == nil {
-                    go tailPod(pod.ObjectMeta.Name, namespace, clientset)
+                    go tailPod(pod.ObjectMeta.Name, clientset)
                 }
             case watch.Deleted:
                 fmt.Printf("%v has been deleted - no longer tailing\n", pod.ObjectMeta.Name)
@@ -56,16 +60,15 @@ func iteratePods(clientset *kubernetes.Clientset, namespace string){
     }
 }
 
-func tailPod(podName string, podNamespace string, clientset *kubernetes.Clientset){
+func tailPod(podName string, clientset *kubernetes.Clientset){
     // TODO add a timeout to deal with non-deletion events such as lost connection to cluster
     fmt.Printf("Tailing %v\n", podName)
 
     // Include logs from the past 5 seconds
-    //TODO parameterise this
-    sinceSeconds := int64(5)
+    sinceSeconds := int64(sinceSecondsAgo)
 
     // Get logs as a Request object then convert to IO reader via Stream()
-    logs, err := clientset.CoreV1().Pods(podNamespace).GetLogs(podName, &corev1.PodLogOptions{
+    logs, err := clientset.CoreV1().Pods(namespace).GetLogs(podName, &corev1.PodLogOptions{
         Follow: true,
         SinceSeconds: &sinceSeconds,
     }).Stream(context.TODO())
@@ -95,8 +98,9 @@ func main() {
     }
 
     flag.StringVar(&namespace, "namespace", "default", "namespace to run morpheus in")
+    flag.IntVar(&sinceSecondsAgo, "since", 5, "number of seconds in the past to begin tailing logs from")
     flag.Parse()
 
     fmt.Printf("Welcome to Morpheus - running in %v namespace\n", namespace)
-    iteratePods(clientset, namespace)
+    iteratePods(clientset)
 }
